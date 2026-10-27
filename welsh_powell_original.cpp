@@ -299,7 +299,7 @@ int main() {
              << "         jadwal (masih perlu penugasan ruang per slot).\n";
     cout << "Cek konflik (1 run): " << r.cekKonflik << " evaluasi adj[v][u]\n";
 
-    // ---- BAGIAN TABEL DETAIL MATA KULIAH ----
+    // ---- TABEL DETAIL MATA KULIAH ----
     cout << "\nDetail Mata Kuliah Per Kelas Warna:\n";
     for (int w = 0; w < r.jumlahWarna; w++) {
         cout << "\n========================================================================================================\n";
@@ -337,4 +337,3 @@ int main() {
          << " mikrodetik/run (checksum " << sink << ")\n";
     return 0;
 }
-```[cite: 2]
