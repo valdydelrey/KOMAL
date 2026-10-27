@@ -1,30 +1,6 @@
 // ============================================================================
 // welsh_powell_original.cpp
-// VERSI ORIGINAL: algoritma Welsh-Powell klasik (Welsh & Powell, 1967),
-// pewarnaan graf MURNI, tanpa penugasan ruang.
-//
-// Masalah yang diselesaikan: 184 mata kuliah FIK, bentrok bila satu kelas
-// dan satu prodi yang sama (graf konflik = gabungan klik per kelas+prodi).
-// Keluaran: satu "warna" per mata kuliah. Warna = kelompok yang boleh
-// jalan bersamaan, BUKAN slot waktu final, karena penugasan ruang belum
-// dilakukan di versi ini.
-//
-// Langkah Welsh-Powell:
-//   1. Hitung derajat tiap simpul (jumlah tetangga di graf konflik).
-//   2. Urutkan simpul menurut derajat MENURUN (stabil: derajat sama
-//      mempertahankan urutan input).
-//   3. Bentuk kelas warna satu per satu secara greedy: untuk warna saat
-//      ini, pindai simpul dalam urutan tersebut, warnai simpul yang belum
-//      berwarna dan tidak bertetangga dengan anggota kelas warna ini.
-//   4. Ulangi untuk simpul yang tersisa sampai semua berwarna.
-//
-// Benchmark: program menjalankan pewarnaan sebanyak ULANG kali dan
-// melaporkan rata-rata waktu per run, plus counter "cek konflik" (jumlah
-// evaluasi adj[v][u]) dari satu run, supaya bisa dibandingkan dengan
-// versi modifikasi.
-//
-// Compile:  g++ -std=c++17 -O2 -o wp_original welsh_powell_original.cpp
-// Jalankan: ./wp_original
+// VERSI MODIFIKASI: Menampilkan detail lengkap mata kuliah per kelas warna.
 // ============================================================================
 
 #include <bits/stdc++.h>
@@ -40,7 +16,7 @@ struct Ruang {
     int kapasitas;
 };
 
-// ---- DATA: disalin persis dari penjadwalan.cpp (184 matkul, 13 ruang) ----
+// ---- DATA: 184 matkul, 13 ruang ----
 vector<MataKuliah> mk = {
         {"INF301A", "Metode Penelitian", "A", "S1-IF", "Dr. Nurjanah", 38},
         {"INF302A", "Jaringan Komputer", "A", "S1-IF", "Supriyanto", 40},
@@ -256,13 +232,12 @@ struct HasilWP {
     vector<int> warna;
     vector<int> derajat, urut;
     int jumlahWarna = 0;
-    long long cekKonflik = 0;  // jumlah evaluasi adj[v][u]
+    long long cekKonflik = 0;
 };
 
 HasilWP welshPowellOriginal(const vector<MataKuliah>& mk) {
     int n = (int)mk.size();
 
-    // Graf konflik sebagai matriks ketetanggaan.
     vector<vector<char>> adj(n, vector<char>(n, 0));
     for (int i = 0; i < n; i++)
         for (int j = i + 1; j < n; j++)
@@ -283,7 +258,7 @@ HasilWP welshPowellOriginal(const vector<MataKuliah>& mk) {
 
     int sisa = n, warna = 0;
     while (sisa > 0) {
-        vector<int> anggota;  // anggota kelas warna saat ini
+        vector<int> anggota;
         for (int v : H.urut) {
             if (H.warna[v] != -1) continue;
             bool bentrok = false;
@@ -305,7 +280,6 @@ HasilWP welshPowellOriginal(const vector<MataKuliah>& mk) {
 int main() {
     const int ULANG = 5000;
 
-    // Satu run untuk hasil + counter.
     HasilWP r = welshPowellOriginal(mk);
     vector<int> ukuran(r.jumlahWarna, 0);
     for (int w : r.warna) ukuran[w]++;
@@ -325,20 +299,30 @@ int main() {
              << "         jadwal (masih perlu penugasan ruang per slot).\n";
     cout << "Cek konflik (1 run): " << r.cekKonflik << " evaluasi adj[v][u]\n";
 
-    cout << "\nPewarnaan per kelas warna:\n";
+    // ---- BAGIAN TABEL DETAIL MATA KULIAH ----
+    cout << "\nDetail Mata Kuliah Per Kelas Warna:\n";
     for (int w = 0; w < r.jumlahWarna; w++) {
-        cout << "  Warna " << w << " (" << ukuran[w] << " matkul): ";
-        bool first = true;
-        for (size_t i = 0; i < mk.size(); i++)
+        cout << "\n========================================================================================================\n";
+        cout << " WARNA " << w << " (" << ukuran[w] << " Mata Kuliah)\n";
+        cout << "========================================================================================================\n";
+        cout << left << setw(10) << "Prodi" << setw(10) << "Kode"
+             << setw(38) << "Nama Mata Kuliah" << setw(8) << "Kelas"
+             << setw(28) << "Dosen Pengampu" << "Mhs\n";
+        cout << string(104, '-') << "\n";
+        
+        for (size_t i = 0; i < mk.size(); i++) {
             if (r.warna[i] == w) {
-                if (!first) cout << ", ";
-                cout << mk[i].kode;
-                first = false;
+                cout << left << setw(10) << mk[i].programStudi 
+                     << setw(10) << mk[i].kode 
+                     << setw(38) << mk[i].nama 
+                     << setw(8)  << mk[i].kelas 
+                     << setw(28) << mk[i].dosen 
+                     << mk[i].mhs << "\n";
             }
-        cout << "\n";
+        }
     }
 
-    // Benchmark: ulangi fase pewarnaan saja.
+    // Benchmark
     long long sink = 0;
     auto t0 = chrono::steady_clock::now();
     for (int it = 0; it < ULANG; it++) {
@@ -353,3 +337,4 @@ int main() {
          << " mikrodetik/run (checksum " << sink << ")\n";
     return 0;
 }
+```[cite: 2]
