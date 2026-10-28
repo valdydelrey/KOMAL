@@ -1,8 +1,3 @@
-// ============================================================================
-// welsh_powell_deteksi.cpp
-// Menjalankan Welsh-Powell Original + Simulasi Jadwal Fisik + Deteksi Bentrok
-// ============================================================================
-
 #include <bits/stdc++.h>
 using namespace std;
 
@@ -11,7 +6,6 @@ struct Ruang { string nama; int kapasitas; };
 struct JadwalEntry { int idMatkul, slot, ruang; };
 
 vector<MataKuliah> mk = {
-    // 184 Data Mata Kuliah
     {"INF301A", "Metode Penelitian", "A", "S1-IF", "Dr. Nurjanah", 38},
     {"INF302A", "Jaringan Komputer", "A", "S1-IF", "Supriyanto", 40},
     {"INF303A", "Praktikum Jaringan Komputer", "A", "S1-IF", "Supriyanto", 40},
@@ -214,44 +208,18 @@ string labelSlot(int s) {
     return HARI[s / (int)JAM.size()] + " " + JAM[s % (int)JAM.size()];
 }
 
-void deteksiBentrok(const vector<JadwalEntry>& jadwal) {
-    int totalBentrokGrup = 0, totalBentrokRuang = 0;
-    map<pair<int, int>, vector<int>> pemakaianRuang; 
-    map<pair<int, string>, vector<int>> jadwalMahasiswa; 
-
-    for (const auto& j : jadwal) {
-        pemakaianRuang[{j.slot, j.ruang}].push_back(j.idMatkul);
-        string grupKey = mk[j.idMatkul].programStudi + "_" + mk[j.idMatkul].kelas;
-        jadwalMahasiswa[{j.slot, grupKey}].push_back(j.idMatkul);
-    }
-
-    cout << "\n=================================================================================\n";
-    cout << " HASIL DETEKSI BENTROK (Welsh-Powell Original)\n";
-    cout << "=================================================================================\n";
-    for (auto& kv : pemakaianRuang) {
-        if (kv.second.size() > 1) {
-            totalBentrokRuang++;
-            if (totalBentrokRuang <= 5) {
-                cout << "[BENTROK RUANG] " << labelSlot(kv.first.first) << " @ " << rg[kv.first.second].nama 
-                     << " diperebutkan oleh " << kv.second.size() << " mata kuliah.\n";
-            }
-        }
-    }
-    if (totalBentrokRuang > 5) cout << "... (dan " << totalBentrokRuang - 5 << " kasus bentrok ruang lainnya disembunyikan)\n";
-
-    for (auto& kv : jadwalMahasiswa) {
-        if (kv.second.size() > 1) {
-            totalBentrokGrup++;
-        }
-    }
-    
-    cout << "-> RINGKASAN: " << totalBentrokRuang << " Bentrok Ruang | " << totalBentrokGrup << " Bentrok Mahasiswa\n";
-    cout << "-> STATUS: " << ((totalBentrokRuang == 0 && totalBentrokGrup == 0) ? "LOLOS (JADWAL VALID)" : "GAGAL (TERJADI BENTROK)") << "\n\n";
+string getNamaProdi(const string& kode) {
+    if (kode == "S1-IF") return "S1 Informatika";
+    if (kode == "S1-SI") return "S1 Sistem Informasi";
+    if (kode == "D3-SI") return "D3 Sistem Informasi";
+    if (kode == "S1-SD") return "S1 Sains Data";
+    return kode;
 }
 
 struct HasilWP { vector<int> warna; int jumlahWarna; };
 
-HasilWP welshPowellOriginal(const vector<MataKuliah>& mk) {
+// Algoritma Welsh-Powell Murni
+HasilWP welshPowellSorted(const vector<MataKuliah>& mk) {
     int n = mk.size();
     vector<vector<char>> adj(n, vector<char>(n, 0));
     for (int i = 0; i < n; i++)
@@ -280,33 +248,169 @@ HasilWP welshPowellOriginal(const vector<MataKuliah>& mk) {
     H.jumlahWarna = warna; return H;
 }
 
-int main() {
-    HasilWP rWP = welshPowellOriginal(mk);
-    
-    // PEMETAAN WARNA KE JADWAL FISIK (SIMULASI BENTROK)
-    vector<JadwalEntry> jadwalWP;
-    map<int, int> ruangCounterPerWarna;
-    for (size_t i = 0; i < mk.size(); i++) {
-        int slotWarna = rWP.warna[i];
-        int ruangFisik = ruangCounterPerWarna[slotWarna] % rg.size(); // Paksa masuk ruang (Penyebab Bentrok)
-        ruangCounterPerWarna[slotWarna]++;
-        jadwalWP.push_back({(int)i, slotWarna, ruangFisik});
+// Menampilkan Seluruh Mata Kuliah yang Dikelompokkan Per Program Studi
+void cetakJadwalPerProdi(const vector<JadwalEntry>& jadwal, const map<pair<int, int>, vector<int>>& pemakaianRuang) {
+    map<string, vector<JadwalEntry>> perProdi;
+    for (const auto& j : jadwal) {
+        perProdi[mk[j.idMatkul].programStudi].push_back(j);
+    }
+
+    vector<string> urutanProdi = {"S1-IF", "S1-SI", "D3-SI", "S1-SD"};
+
+    for (const string& prodi : urutanProdi) {
+        if (perProdi[prodi].empty()) continue;
+        cout << "\n==== " << getNamaProdi(prodi) << " ====\n";
+        cout << left << setw(20) << "Waktu Slot" << setw(10) << "Kode" << setw(38) << "Nama Mata Kuliah" 
+             << setw(7) << "Kelas" << setw(24) << "Dosen Pengampu" << setw(16) << "Ruang Fisik" << "Status\n";
+        cout << string(125, '-') << "\n";
+
+        for (const auto& j : perProdi[prodi]) {
+            bool bentrok = pemakaianRuang.count({j.slot, j.ruang}) && pemakaianRuang.at({j.slot, j.ruang}).size() > 1;
+            cout << left << setw(20) << labelSlot(j.slot)
+                 << setw(10) << mk[j.idMatkul].kode
+                 << setw(38) << mk[j.idMatkul].nama
+                 << setw(7)  << mk[j.idMatkul].kelas
+                 << setw(24) << mk[j.idMatkul].dosen
+                 << setw(16) << rg[j.ruang].nama
+                 << (bentrok ? "[BENTROK RUANG]" : "LANCAR") << "\n";
+        }
+    }
+}
+
+void deteksiBentrok(const vector<JadwalEntry>& jadwal) {
+    int totalBentrokGrup = 0, totalBentrokRuang = 0;
+    map<pair<int, int>, vector<int>> pemakaianRuang; 
+    map<pair<int, string>, vector<int>> jadwalMahasiswa; 
+
+    for (const auto& j : jadwal) {
+        pemakaianRuang[{j.slot, j.ruang}].push_back(j.idMatkul);
+        string grupKey = mk[j.idMatkul].programStudi + "_" + mk[j.idMatkul].kelas;
+        jadwalMahasiswa[{j.slot, grupKey}].push_back(j.idMatkul);
+    }
+
+    cout << "\n=================================================================================\n";
+    cout << " HASIL DETEKSI BENTROK RUANG DAN MAHASISWA\n";
+    cout << "=================================================================================\n";
+    for (auto& kv : pemakaianRuang) {
+        if (kv.second.size() > 1) {
+            totalBentrokRuang++;
+            if (totalBentrokRuang <= 5) {
+                cout << "[BENTROK RUANG] " << labelSlot(kv.first.first) << " @ " << rg[kv.first.second].nama 
+                     << " diperebutkan oleh " << kv.second.size() << " mata kuliah.\n";
+            }
+        }
+    }
+    if (totalBentrokRuang > 5) cout << "... (dan " << totalBentrokRuang - 5 << " kasus bentrok ruang lainnya disembunyikan)\n";
+
+    for (auto& kv : jadwalMahasiswa) {
+        if (kv.second.size() > 1) totalBentrokGrup++;
     }
     
-    deteksiBentrok(jadwalWP);
+    cout << "-> RINGKASAN: " << totalBentrokRuang << " Bentrok Ruang | " << totalBentrokGrup << " Bentrok Mahasiswa\n";
+    cout << "-> STATUS: " << ((totalBentrokRuang == 0 && totalBentrokGrup == 0) ? "LOLOS (JADWAL VALID)" : "GAGAL (TERJADI BENTROK)") << "\n\n";
+}
 
-    // BENCHMARK 5000 RUNS
+void menuJadwalAwal(HasilWP rWP) {
+    vector<JadwalEntry> jadwalWP;
+    map<int, int> ruangCounterPerWarna;
+    map<pair<int, int>, vector<int>> pemakaianRuang;
+
+    for (size_t i = 0; i < mk.size(); i++) {
+        int slotWarna = rWP.warna[i];
+        int ruangFisik = ruangCounterPerWarna[slotWarna] % rg.size();
+        ruangCounterPerWarna[slotWarna]++;
+        JadwalEntry j = {(int)i, slotWarna, ruangFisik};
+        jadwalWP.push_back(j);
+        pemakaianRuang[{j.slot, j.ruang}].push_back(j.idMatkul);
+    }
+
+    cout << "\n========================================================================================================================\n";
+    cout << " JADWAL MATA KULIAH AWAL (WELSH-POWELL + ALOKASI MODULO - MASIH BENTROK RUANG)\n";
+    cout << "========================================================================================================================\n";
+    cetakJadwalPerProdi(jadwalWP, pemakaianRuang);
+    deteksiBentrok(jadwalWP);
+}
+
+void menuJadwalBebasBentrok(HasilWP rWP) {
+    vector<JadwalEntry> jadwalValid;
+    vector<vector<bool>> slotRuangDipakai(20, vector<bool>(rg.size(), false));
+    map<pair<int, string>, bool> jadwalMahasiswaDipakai;
+    map<pair<int, int>, vector<int>> pemakaianRuang;
+
+    for (size_t i = 0; i < mk.size(); i++) {
+        int slotAwal = rWP.warna[i];
+        string grupKey = mk[i].programStudi + "_" + mk[i].kelas;
+        
+        int slotTerpilih = -1, ruangTerpilih = -1;
+        for (int s = slotAwal; s < 20; s++) {
+            if (jadwalMahasiswaDipakai[{s, grupKey}]) continue;
+            for (size_t r = 0; r < rg.size(); r++) {
+                if (!slotRuangDipakai[s][r]) {
+                    slotTerpilih = s;
+                    ruangTerpilih = r;
+                    break;
+                }
+            }
+            if (slotTerpilih != -1) break;
+        }
+
+        slotRuangDipakai[slotTerpilih][ruangTerpilih] = true;
+        jadwalMahasiswaDipakai[{slotTerpilih, grupKey}] = true;
+        JadwalEntry j = {(int)i, slotTerpilih, ruangTerpilih};
+        jadwalValid.push_back(j);
+        pemakaianRuang[{j.slot, j.ruang}].push_back(j.idMatkul);
+    }
+
+    cout << "\n========================================================================================================================\n";
+    cout << " JADWAL MATA KULIAH HASIL OPTIMASI (WELSH-POWELL MURNI - BEBAS BENTROK)\n";
+    cout << "========================================================================================================================\n";
+    cetakJadwalPerProdi(jadwalValid, pemakaianRuang);
+    deteksiBentrok(jadwalValid);
+}
+
+int main() {
+    HasilWP rWP = welshPowellSorted(mk);
+
+    int pilihan;
+    do {
+        cout << "\n====================================================================\n";
+        cout << " SISTEM PENJADWALAN MATA KULIAH (WELSH-POWELL MURNI)\n";
+        cout << "====================================================================\n";
+        cout << "1. Tampilkan 184 Matkul Jadwal Awal (Per Prodi)\n";
+        cout << "2. Tampilkan 184 Matkul Jadwal Bebas Bentrok (Per Prodi)\n";
+        cout << "0. Keluar\n";
+        cout << "--------------------------------------------------------------------\n";
+        cout << "Pilih Opsi (0/1/2): ";
+        cin >> pilihan;
+
+        switch(pilihan) {
+            case 1:
+                menuJadwalAwal(rWP);
+                break;
+            case 2:
+                menuJadwalBebasBentrok(rWP);
+                break;
+            case 0:
+                cout << "Keluar dari program.\n";
+                break;
+            default:
+                cout << "Opsi tidak valid.\n";
+        }
+    } while (pilihan != 0);
+
+    // BENCHMARK WELSH-POWELL (5000 Iterasi)
     const int ULANG = 5000;
     long long sink = 0;
     auto t0 = chrono::steady_clock::now();
     for (int it = 0; it < ULANG; it++) {
-        HasilWP h = welshPowellOriginal(mk);
+        HasilWP h = welshPowellSorted(mk);
         for (int w : h.warna) sink += w;
     }
     auto t1 = chrono::steady_clock::now();
     double us = chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / (double)ULANG;
     
-    cout << "=== BENCHMARK (5000 Iterasi) ===\n";
-    cout << "Kecepatan Welsh-Powell Original: " << fixed << setprecision(2) << us << " mikrodetik/run\n";
+    cout << "\n=== BENCHMARK (5000 Iterasi) ===\n";
+    cout << "Kecepatan Eksekusi Welsh-Powell Terurut: " << fixed << setprecision(2) << us << " mikrodetik/run\n";
+
     return 0;
 }
