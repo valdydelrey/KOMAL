@@ -196,7 +196,7 @@ vector<Ruang> rg = {
     {"FIK-201", 35}, {"FIK-202", 36}, {"FIK-203", 40},
     {"FIK-301", 40}, {"FIK-302", 40}, {"FIK-303", 40},
     {"FIKLAB-201", 35}, {"FIKLAB-301", 40}, {"FIKLAB-302", 35},
-    {"FIKLAB-303", 40}, {"FIKLAB-304", 40}, {"FIKLAB-401", 40},
+    {"FIKLAB-303", 40}, {"FIKLAB-401", 40}, {"FIKLAB-402", 40},
     {"VCR-FIK-KB-1", 50}
 };
 
@@ -218,7 +218,6 @@ string getNamaProdi(const string& kode) {
 
 struct HasilWP { vector<int> warna; int jumlahWarna; };
 
-// Algoritma Welsh-Powell Murni
 HasilWP welshPowellSorted(const vector<MataKuliah>& mk) {
     int n = mk.size();
     vector<vector<char>> adj(n, vector<char>(n, 0));
@@ -248,7 +247,6 @@ HasilWP welshPowellSorted(const vector<MataKuliah>& mk) {
     H.jumlahWarna = warna; return H;
 }
 
-// Menampilkan Seluruh Mata Kuliah yang Dikelompokkan Per Program Studi
 void cetakJadwalPerProdi(const vector<JadwalEntry>& jadwal, const map<pair<int, int>, vector<int>>& pemakaianRuang) {
     map<string, vector<JadwalEntry>> perProdi;
     for (const auto& j : jadwal) {
@@ -310,13 +308,28 @@ void deteksiBentrok(const vector<JadwalEntry>& jadwal) {
     cout << "-> STATUS: " << ((totalBentrokRuang == 0 && totalBentrokGrup == 0) ? "LOLOS (JADWAL VALID)" : "GAGAL (TERJADI BENTROK)") << "\n\n";
 }
 
+void jalankanBenchmark() {
+    const int ULANG = 5000;
+    long long sink = 0;
+    auto t0 = chrono::steady_clock::now();
+    for (int it = 0; it < ULANG; it++) {
+        HasilWP h = welshPowellSorted(mk);
+        for (int w : h.warna) sink += w;
+    }
+    auto t1 = chrono::steady_clock::now();
+    double us = chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / (double)ULANG;
+    
+    cout << "=== BENCHMARK (5000 Iterasi) ===\n";
+    cout << "Kecepatan Eksekusi Welsh-Powell: " << fixed << setprecision(2) << us << " mikrodetik/run\n\n";
+}
+
 void menuJadwalAwal(HasilWP rWP) {
     vector<JadwalEntry> jadwalWP;
     map<int, int> ruangCounterPerWarna;
     map<pair<int, int>, vector<int>> pemakaianRuang;
 
     for (size_t i = 0; i < mk.size(); i++) {
-        int slotWarna = rWP.warna[i];
+        int slotWarna = rWP.warna[i] % 20;
         int ruangFisik = ruangCounterPerWarna[slotWarna] % rg.size();
         ruangCounterPerWarna[slotWarna]++;
         JadwalEntry j = {(int)i, slotWarna, ruangFisik};
@@ -329,6 +342,7 @@ void menuJadwalAwal(HasilWP rWP) {
     cout << "========================================================================================================================\n";
     cetakJadwalPerProdi(jadwalWP, pemakaianRuang);
     deteksiBentrok(jadwalWP);
+    jalankanBenchmark();
 }
 
 void menuJadwalBebasBentrok(HasilWP rWP) {
@@ -338,11 +352,13 @@ void menuJadwalBebasBentrok(HasilWP rWP) {
     map<pair<int, int>, vector<int>> pemakaianRuang;
 
     for (size_t i = 0; i < mk.size(); i++) {
-        int slotAwal = rWP.warna[i];
+        int slotAwal = rWP.warna[i] % 20;
         string grupKey = mk[i].programStudi + "_" + mk[i].kelas;
         
         int slotTerpilih = -1, ruangTerpilih = -1;
-        for (int s = slotAwal; s < 20; s++) {
+        // Cari slot kosong memutar dari slotAwal (0 - 19)
+        for (int step = 0; step < 20; step++) {
+            int s = (slotAwal + step) % 20;
             if (jadwalMahasiswaDipakai[{s, grupKey}]) continue;
             for (size_t r = 0; r < rg.size(); r++) {
                 if (!slotRuangDipakai[s][r]) {
@@ -354,11 +370,13 @@ void menuJadwalBebasBentrok(HasilWP rWP) {
             if (slotTerpilih != -1) break;
         }
 
-        slotRuangDipakai[slotTerpilih][ruangTerpilih] = true;
-        jadwalMahasiswaDipakai[{slotTerpilih, grupKey}] = true;
-        JadwalEntry j = {(int)i, slotTerpilih, ruangTerpilih};
-        jadwalValid.push_back(j);
-        pemakaianRuang[{j.slot, j.ruang}].push_back(j.idMatkul);
+        if (slotTerpilih != -1 && ruangTerpilih != -1) {
+            slotRuangDipakai[slotTerpilih][ruangTerpilih] = true;
+            jadwalMahasiswaDipakai[{slotTerpilih, grupKey}] = true;
+            JadwalEntry j = {(int)i, slotTerpilih, ruangTerpilih};
+            jadwalValid.push_back(j);
+            pemakaianRuang[{j.slot, j.ruang}].push_back(j.idMatkul);
+        }
     }
 
     cout << "\n========================================================================================================================\n";
@@ -366,6 +384,7 @@ void menuJadwalBebasBentrok(HasilWP rWP) {
     cout << "========================================================================================================================\n";
     cetakJadwalPerProdi(jadwalValid, pemakaianRuang);
     deteksiBentrok(jadwalValid);
+    jalankanBenchmark();
 }
 
 int main() {
@@ -376,8 +395,8 @@ int main() {
         cout << "\n====================================================================\n";
         cout << " SISTEM PENJADWALAN MATA KULIAH (WELSH-POWELL MURNI)\n";
         cout << "====================================================================\n";
-        cout << "1. Tampilkan 184 Matkul Jadwal Awal (Per Prodi)\n";
-        cout << "2. Tampilkan 184 Matkul Jadwal Bebas Bentrok (Per Prodi)\n";
+        cout << "1. Tampilkan 184 Matkul Jadwal Awal (Per Prodi + Benchmark)\n";
+        cout << "2. Tampilkan 184 Matkul Jadwal Bebas Bentrok (Per Prodi + Benchmark)\n";
         cout << "0. Keluar\n";
         cout << "--------------------------------------------------------------------\n";
         cout << "Pilih Opsi (0/1/2): ";
@@ -391,26 +410,12 @@ int main() {
                 menuJadwalBebasBentrok(rWP);
                 break;
             case 0:
-                cout << "Keluar dari program.\n";
+                cout << "Keluar dari program. Terima kasih!\n";
                 break;
             default:
-                cout << "Opsi tidak valid.\n";
+                cout << "Opsi tidak valid. Silakan coba lagi.\n";
         }
     } while (pilihan != 0);
-
-    // BENCHMARK WELSH-POWELL (5000 Iterasi)
-    const int ULANG = 5000;
-    long long sink = 0;
-    auto t0 = chrono::steady_clock::now();
-    for (int it = 0; it < ULANG; it++) {
-        HasilWP h = welshPowellSorted(mk);
-        for (int w : h.warna) sink += w;
-    }
-    auto t1 = chrono::steady_clock::now();
-    double us = chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / (double)ULANG;
-    
-    cout << "\n=== BENCHMARK (5000 Iterasi) ===\n";
-    cout << "Kecepatan Eksekusi Welsh-Powell Terurut: " << fixed << setprecision(2) << us << " mikrodetik/run\n";
 
     return 0;
 }
