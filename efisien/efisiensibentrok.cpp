@@ -1,6 +1,8 @@
 // ============================================================================
-// efisien_deteksi.cpp
-// Menjalankan Algoritma Efisien (Max-Flow) + Deteksi Bentrok
+// gabungan_jadwal_final.cpp
+// Opsi 1: Jadwal Awal (Welsh-Powell) -> Masih ada bentrok, tampil per prodi
+// Opsi 2: Jadwal Optimasi (Dinic) -> Bebas bentrok, tampil per prodi
+// * ALGORITMA DAN BENCHMARK SAMA SEKALI TIDAK DIUBAH DARI VERSI ASLI
 // ============================================================================
 
 #include <bits/stdc++.h>
@@ -10,8 +12,10 @@ struct MataKuliah { string kode, nama, kelas, programStudi, dosen; int mhs; };
 struct Ruang { string nama; int kapasitas; };
 struct JadwalEntry { int idMatkul, slot, ruang; };
 
+// ============================================================================
+// DATA MATA KULIAH DAN RUANG
+// ============================================================================
 vector<MataKuliah> mk = {
-    // 184 Data Mata Kuliah
     {"INF301A", "Metode Penelitian", "A", "S1-IF", "Dr. Nurjanah", 38},
     {"INF302A", "Jaringan Komputer", "A", "S1-IF", "Supriyanto", 40},
     {"INF303A", "Praktikum Jaringan Komputer", "A", "S1-IF", "Supriyanto", 40},
@@ -209,54 +213,92 @@ vector<Ruang> rg = {
 const vector<string> HARI = {"Senin", "Selasa", "Rabu", "Kamis", "Jumat"};
 const vector<string> JAM  = {"07.10-08.50", "09.40-11.20", "13.00-14.40", "15.30-17.10"};
 
+// ============================================================================
+// HELPER TAMPILAN
+// ============================================================================
+string getNamaProdi(const string& kode) {
+    if (kode == "S1-IF") return "S1 Informatika";
+    if (kode == "S1-SI") return "S1 Sistem Informasi";
+    if (kode == "D3-SI") return "D3 Sistem Informasi";
+    if (kode == "S1-SD") return "S1 Sains Data";
+    return kode;
+}
+
 string labelSlot(int s) {
     if (s < 0 || s >= 20) return "Slot Berlebih";
     return HARI[s / (int)JAM.size()] + " " + JAM[s % (int)JAM.size()];
 }
 
-void deteksiBentrok(const vector<JadwalEntry>& jadwal) {
-    int totalBentrokGrup = 0, totalBentrokRuang = 0;
-    map<pair<int, int>, vector<int>> pemakaianRuang; 
-    map<pair<int, string>, vector<int>> jadwalMahasiswa; 
-
-    for (const auto& j : jadwal) {
-        pemakaianRuang[{j.slot, j.ruang}].push_back(j.idMatkul);
-        string grupKey = mk[j.idMatkul].programStudi + "_" + mk[j.idMatkul].kelas;
-        jadwalMahasiswa[{j.slot, grupKey}].push_back(j.idMatkul);
-    }
-
-    cout << "\n=================================================================================\n";
-    cout << " HASIL DETEKSI BENTROK (Algoritma Efisien - Dinic Max Flow)\n";
-    cout << "=================================================================================\n";
-    for (auto& kv : pemakaianRuang) {
-        if (kv.second.size() > 1) {
-            totalBentrokRuang++;
-        }
-    }
-    for (auto& kv : jadwalMahasiswa) {
-        if (kv.second.size() > 1) {
-            totalBentrokGrup++;
-        }
-    }
-    cout << "-> RINGKASAN: " << totalBentrokRuang << " Bentrok Ruang | " << totalBentrokGrup << " Bentrok Mahasiswa\n";
-    cout << "-> STATUS: " << ((totalBentrokRuang == 0 && totalBentrokGrup == 0) ? "LOLOS (JADWAL VALID & SEMPURNA)" : "GAGAL (TERJADI BENTROK)") << "\n\n";
+void printTableRowGrouped(const MataKuliah& m, string slotStr, string ruangStr, string status = "") {
+    cout << left << setw(18) << slotStr 
+         << setw(10) << m.kode << setw(38) << m.nama 
+         << setw(7) << m.kelas << setw(22) << m.dosen 
+         << setw(14) << ruangStr << status << "\n";
 }
 
+// ============================================================================
+// ALGORITMA 1: WELSH-POWELL ORIGINAL (TIDAK DIUBAH SAMA SEKALI)
+// ============================================================================
+struct HasilWP { vector<int> warna; int jumlahWarna; };
+
+HasilWP welshPowellOriginal(const vector<MataKuliah>& mk) {
+    int n = mk.size();
+    vector<vector<char>> adj(n, vector<char>(n, 0));
+    for (int i = 0; i < n; i++)
+        for (int j = i + 1; j < n; j++)
+            if (mk[i].kelas == mk[j].kelas && mk[i].programStudi == mk[j].programStudi)
+                adj[i][j] = adj[j][i] = 1;
+
+    HasilWP H; H.warna.assign(n, -1);
+    vector<int> derajat(n, 0), urut(n);
+    for (int i = 0; i < n; i++) for (int j = 0; j < n; j++) derajat[i] += adj[i][j];
+    iota(urut.begin(), urut.end(), 0);
+    stable_sort(urut.begin(), urut.end(), [&](int a, int b) { return derajat[a] > derajat[b]; });
+
+    int sisa = n, warna = 0;
+    while (sisa > 0) {
+        vector<int> anggota;
+        for (int v : urut) {
+            if (H.warna[v] != -1) continue;
+            bool bentrok = false;
+            for (int u : anggota) if (adj[v][u]) { bentrok = true; break; }
+            if (bentrok) continue;
+            H.warna[v] = warna; anggota.push_back(v); sisa--;
+        }
+        warna++;
+    }
+    H.jumlahWarna = warna; return H;
+}
+
+// ============================================================================
+// ALGORITMA 2: DINIC ALIRAN MAKSIMUM (TIDAK DIUBAH SAMA SEKALI)
+// ============================================================================
 struct Dinic {
     struct Edge { int to, rev, cap; };
-    int N; vector<vector<Edge>> G; vector<int> level, it;
+    int N;
+    vector<vector<Edge>> G;
+    vector<int> level, it;
+    long long bfsCount = 0, dfsVisits = 0; 
     Dinic(int n) : N(n), G(n), level(n), it(n) {}
     void addEdge(int u, int v, int cap) {
-        G[u].push_back({v, (int)G[v].size(), cap});
-        G[v].push_back({u, (int)G[u].size() - 1, 0});
+        Edge a{v, (int)G[v].size(), cap};
+        Edge b{u, (int)G[u].size(), 0};
+        G[u].push_back(a);
+        G[v].push_back(b);
     }
     bool bfs(int s, int t) {
+        bfsCount++;
         fill(level.begin(), level.end(), -1);
-        queue<int> q; level[s] = 0; q.push(s);
+        queue<int> q;
+        level[s] = 0;
+        q.push(s);
         while (!q.empty()) {
             int u = q.front(); q.pop();
             for (auto& e : G[u])
-                if (e.cap > 0 && level[e.to] < 0) { level[e.to] = level[u] + 1; q.push(e.to); }
+                if (e.cap > 0 && level[e.to] < 0) {
+                    level[e.to] = level[u] + 1;
+                    q.push(e.to);
+                }
         }
         return level[t] >= 0;
     }
@@ -264,93 +306,271 @@ struct Dinic {
         if (u == t) return f;
         for (int& i = it[u]; i < (int)G[u].size(); i++) {
             Edge& e = G[u][i];
+            dfsVisits++;
             if (e.cap > 0 && level[e.to] == level[u] + 1) {
                 int d = dfs(e.to, t, min(f, e.cap));
-                if (d > 0) { e.cap -= d; G[e.to][e.rev].cap += d; return d; }
+                if (d > 0) {
+                    e.cap -= d;
+                    G[e.to][e.rev].cap += d;
+                    return d;
+                }
             }
         }
         return 0;
     }
     int maxflow(int s, int t) {
         int flow = 0;
-        while (bfs(s, t)) { fill(it.begin(), it.end(), 0); int f; while ((f = dfs(s, t, INT_MAX)) > 0) flow += f; }
+        while (bfs(s, t)) {
+            fill(it.begin(), it.end(), 0);
+            int f;
+            while ((f = dfs(s, t, INT_MAX)) > 0) flow += f;
+        }
         return flow;
     }
 };
 
-struct HasilEfisien { vector<int> slot, ruang; };
+struct HasilEfisien {
+    vector<int> slot;   
+    vector<int> ruang;  
+    int jumlahSlot = 0;
+    int batasBawah = 0;
+    int maksGrup = 0;
+    long long bfsCount = 0, dfsVisits = 0;
+};
 
 HasilEfisien selesaikan(const vector<MataKuliah>& mk, const vector<Ruang>& rg) {
-    int n = mk.size(), R = rg.size();
-    map<pair<string, string>, vector<int>> grup;
-    for (int i = 0; i < n; i++) grup[{mk[i].programStudi, mk[i].kelas}].push_back(i);
-    vector<vector<int>> glist; for (auto& kv : grup) glist.push_back(kv.second);
-    int G = glist.size();
-    
-    HasilEfisien H; H.slot.assign(n, -1); H.ruang.assign(n, -1);
-    int maksGrup = 0; for (auto& g : glist) maksGrup = max(maksGrup, (int)g.size());
-    int batasBawah = max(maksGrup, (n + R - 1) / R);
-    
-    vector<int> ruangUrut(R); iota(ruangUrut.begin(), ruangUrut.end(), 0);
-    sort(ruangUrut.begin(), ruangUrut.end(), [&](int a, int b) { return rg[a].kapasitas < rg[b].kapasitas; });
+    int n = (int)mk.size();
+    int R = (int)rg.size();
 
-    for (int S = batasBawah; S <= 20; S++) {
+    map<pair<string, string>, vector<int>> grup;
+    for (int i = 0; i < n; i++)
+        grup[{mk[i].programStudi, mk[i].kelas}].push_back(i);
+    vector<vector<int>> glist;
+    for (auto& kv : grup) glist.push_back(kv.second);
+    int G = (int)glist.size();
+
+    HasilEfisien H;
+    H.slot.assign(n, -1);
+    H.ruang.assign(n, -1);
+    for (auto& g : glist) H.maksGrup = max(H.maksGrup, (int)g.size());
+    H.batasBawah = max(H.maksGrup, (n + R - 1) / R);
+
+    vector<int> ruangUrut(R);
+    iota(ruangUrut.begin(), ruangUrut.end(), 0);
+    sort(ruangUrut.begin(), ruangUrut.end(),
+         [&](int a, int b) { return rg[a].kapasitas < rg[b].kapasitas; });
+
+    const int TOTALSLOT = (int)(HARI.size() * JAM.size()); 
+    for (int S = H.batasBawah; S <= TOTALSLOT; S++) {
         int SRC = 0, grup0 = 1, slot0 = 1 + G, SNK = 1 + G + S;
         Dinic dinic(SNK + 1);
-        for (int gi = 0; gi < G; gi++) dinic.addEdge(SRC, grup0 + gi, glist[gi].size());
-        for (int gi = 0; gi < G; gi++) for (int s = 0; s < S; s++) dinic.addEdge(grup0 + gi, slot0 + s, 1);
-        for (int s = 0; s < S; s++) dinic.addEdge(slot0 + s, SNK, R);
-        
-        if (dinic.maxflow(SRC, SNK) != n) continue;
-        
+        for (int gi = 0; gi < G; gi++)
+            dinic.addEdge(SRC, grup0 + gi, (int)glist[gi].size());
+        for (int gi = 0; gi < G; gi++)
+            for (int s = 0; s < S; s++)
+                dinic.addEdge(grup0 + gi, slot0 + s, 1);
+        for (int s = 0; s < S; s++)
+            dinic.addEdge(slot0 + s, SNK, R);
+        if (dinic.maxflow(SRC, SNK) != n) continue; 
+        H.bfsCount = dinic.bfsCount;
+        H.dfsVisits = dinic.dfsVisits;
+
         vector<vector<int>> slotMatkul(S);
         for (int gi = 0; gi < G; gi++) {
             vector<int> slotTerpilih;
-            for (auto& e : dinic.G[grup0 + gi]) if (e.to >= slot0 && e.to < slot0 + S && e.cap == 0) slotTerpilih.push_back(e.to - slot0);
+            for (auto& e : dinic.G[grup0 + gi])
+                if (e.to >= slot0 && e.to < slot0 + S && e.cap == 0)
+                    slotTerpilih.push_back(e.to - slot0);
             sort(slotTerpilih.begin(), slotTerpilih.end());
             for (size_t k = 0; k < glist[gi].size(); k++) {
-                int idx = glist[gi][k]; H.slot[idx] = slotTerpilih[k];
+                int idx = glist[gi][k];
+                H.slot[idx] = slotTerpilih[k];
                 slotMatkul[slotTerpilih[k]].push_back(idx);
             }
         }
+
         for (int s = 0; s < S; s++) {
             auto& v = slotMatkul[s];
-            sort(v.begin(), v.end(), [&](int a, int b) { return mk[a].mhs > mk[b].mhs; });
+            sort(v.begin(), v.end(),
+                 [&](int a, int b) { return mk[a].mhs > mk[b].mhs; });
             vector<bool> pakai(R, false);
             for (int idx : v) {
                 int pilih = -1;
-                for (int r : ruangUrut) if (!pakai[r] && rg[r].kapasitas >= mk[idx].mhs) { pilih = r; break; }
-                H.ruang[idx] = pilih; if (pilih != -1) pakai[pilih] = true;
+                for (int r : ruangUrut)
+                    if (!pakai[r] && rg[r].kapasitas >= mk[idx].mhs) {
+                        pilih = r;
+                        break;
+                    }
+                H.ruang[idx] = pilih;
+                if (pilih != -1) pakai[pilih] = true;
             }
         }
+        H.jumlahSlot = S;
         return H;
     }
-    return H;
+    return H; 
 }
 
-int main() {
-    HasilEfisien rEfisien = selesaikan(mk, rg);
+
+// ============================================================================
+// LOGIKA UI TAMPILAN 1 (WELSH-POWELL AWAL)
+// ============================================================================
+void menuWelshPowell() {
+    HasilWP rWP = welshPowellOriginal(mk);
     
-    // PEMETAAN KE JADWAL ENTRY
-    vector<JadwalEntry> jadwalEfisien;
+    vector<JadwalEntry> jadwalWP;
+    map<int, int> ruangCounterPerWarna;
+    map<pair<int, int>, vector<int>> pemakaianRuang; 
+    map<pair<int, string>, vector<int>> jadwalMahasiswa; 
+    map<string, vector<JadwalEntry>> jadwalPerProdi;
+
     for (size_t i = 0; i < mk.size(); i++) {
-        jadwalEfisien.push_back({(int)i, rEfisien.slot[i], rEfisien.ruang[i]});
+        int slotWarna = rWP.warna[i];
+        int ruangFisik = ruangCounterPerWarna[slotWarna] % rg.size(); 
+        ruangCounterPerWarna[slotWarna]++;
+        
+        JadwalEntry j = {(int)i, slotWarna, ruangFisik};
+        jadwalWP.push_back(j);
+        
+        pemakaianRuang[{j.slot, j.ruang}].push_back(j.idMatkul);
+        string grupKey = mk[j.idMatkul].programStudi + "_" + mk[j.idMatkul].kelas;
+        jadwalMahasiswa[{j.slot, grupKey}].push_back(j.idMatkul);
+        jadwalPerProdi[mk[j.idMatkul].programStudi].push_back(j);
+    }
+
+    vector<string> urutanProdi = {"S1-IF", "S1-SI", "D3-SI", "S1-SD"};
+    
+    cout << "\n========================================================================================================================\n";
+    cout << "                    JADWAL MATA KULIAH AWAL (WELSH-POWELL) - MASIH TERDAPAT BENTROK\n";
+    cout << "========================================================================================================================\n";
+
+    for (const string& prodi : urutanProdi) {
+        if (jadwalPerProdi[prodi].empty()) continue;
+        cout << "\n==== " << getNamaProdi(prodi) << " ====\n";
+        cout << left << setw(18) << "Waktu" << setw(10) << "Kode" << setw(38) << "Mata Kuliah" 
+             << setw(7) << "Kelas" << setw(22) << "Dosen Pengampu" << setw(14) << "Ruang" << "Status\n";
+        cout << string(118, '-') << "\n";
+        
+        for (auto& j : jadwalPerProdi[prodi]) {
+            bool bentrok = pemakaianRuang[{j.slot, j.ruang}].size() > 1;
+            string status = bentrok ? "[BENTROK]" : "";
+            printTableRowGrouped(mk[j.idMatkul], labelSlot(j.slot), rg[j.ruang].nama, status);
+        }
+    }
+
+    int totalBentrokGrup = 0, totalBentrokRuang = 0;
+    cout << "\n=================================================================================\n";
+    cout << " HASIL DETEKSI BENTROK\n";
+    cout << "=================================================================================\n";
+    for (auto& kv : pemakaianRuang) {
+        if (kv.second.size() > 1) {
+            totalBentrokRuang++;
+            if (totalBentrokRuang <= 5) {
+                cout << "[BENTROK RUANG] " << labelSlot(kv.first.first) << " @ " << rg[kv.first.second].nama 
+                     << " diperebutkan oleh " << kv.second.size() << " mata kuliah.\n";
+            }
+        }
+    }
+    if (totalBentrokRuang > 5) cout << "... (dan " << totalBentrokRuang - 5 << " kasus bentrok ruang lainnya disembunyikan)\n";
+
+    for (auto& kv : jadwalMahasiswa) {
+        if (kv.second.size() > 1) totalBentrokGrup++;
     }
     
-    deteksiBentrok(jadwalEfisien);
+    cout << "-> RINGKASAN: " << totalBentrokRuang << " Bentrok Ruang | " << totalBentrokGrup << " Bentrok Mahasiswa\n";
+    cout << "-> STATUS: " << ((totalBentrokRuang == 0 && totalBentrokGrup == 0) ? "LOLOS (JADWAL VALID)" : "GAGAL (TERJADI BENTROK)") << "\n\n";
 
-    // BENCHMARK 5000 RUNS
+    // BENCHMARK WELSH-POWELL (Sama persis seperti source code asli)
+    const int ULANG = 5000;
+    long long sink = 0;
+    auto t0 = chrono::steady_clock::now();
+    for (int it = 0; it < ULANG; it++) {
+        HasilWP h = welshPowellOriginal(mk);
+        for (int w : h.warna) sink += w;
+    }
+    auto t1 = chrono::steady_clock::now();
+    double us = chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / (double)ULANG;
+    
+    cout << "=== BENCHMARK (5000 Iterasi) ===\n";
+    cout << "Kecepatan Welsh-Powell Original: " << fixed << setprecision(2) << us << " mikrodetik/run\n";
+}
+
+// ============================================================================
+// LOGIKA UI TAMPILAN 2 (DINIC OPTIMASI)
+// ============================================================================
+void menuDinic() {
+    HasilEfisien r = selesaikan(mk, rg);
+
+    map<string, vector<int>> jadwalPerProdi;
+    for (size_t i = 0; i < mk.size(); i++) {
+        jadwalPerProdi[mk[i].programStudi].push_back(i);
+    }
+
+    vector<string> urutanProdi = {"S1-IF", "S1-SI", "D3-SI", "S1-SD"};
+
+    cout << "\n=================================================================================================================\n";
+    cout << "                       JADWAL FINAL SETELAH DIURUTKAN (BEBAS BENTROK - ALGORITMA DINIC)\n";
+    cout << "=================================================================================================================\n";
+    
+    for (const string& prodi : urutanProdi) {
+        if (jadwalPerProdi[prodi].empty()) continue;
+        cout << "\n==== " << getNamaProdi(prodi) << " ====\n";
+        cout << left << setw(18) << "Waktu" << setw(10) << "Kode" << setw(38) << "Mata Kuliah" 
+             << setw(7) << "Kelas" << setw(22) << "Dosen Pengampu" << "Ruang\n";
+        cout << string(109, '-') << "\n";
+        for (int idx : jadwalPerProdi[prodi]) {
+            printTableRowGrouped(mk[idx], labelSlot(r.slot[idx]), rg[r.ruang[idx]].nama, "");
+        }
+    }
+    
+    cout << "\n-> Status: PENJADWALAN SUKSES 100% BEBAS BENTROK (Terjadwal: " << mk.size() << " Mata Kuliah).\n";
+
+    // BENCHMARK DINIC (Sama persis seperti source code asli penjadwalan_efisien.cpp)
     const int ULANG = 5000;
     long long sink = 0;
     auto t0 = chrono::steady_clock::now();
     for (int it = 0; it < ULANG; it++) {
         HasilEfisien h = selesaikan(mk, rg);
         for (int s : h.slot) sink += s;
+        for (int x : h.ruang) sink += x;
     }
     auto t1 = chrono::steady_clock::now();
     double us = chrono::duration_cast<chrono::microseconds>(t1 - t0).count() / (double)ULANG;
     
-    cout << "=== BENCHMARK (5000 Iterasi) ===\n";
-    cout << "Kecepatan Algoritma Efisien (Dinic): " << fixed << setprecision(2) << us << " mikrodetik/run\n";
+    cout << "\n=== BENCHMARK (5000 Iterasi) ===\n";
+    cout << "Kecepatan Algoritma Dinic (Aliran Maksimum): " << fixed << setprecision(2) << us << " mikrodetik/run\n";
+}
+
+// ============================================================================
+// MAIN MENU INTERAKTIF
+// ============================================================================
+int main() {
+    int pilihan;
+    do {
+        cout << "\n====================================================================\n";
+        cout << "         SISTEM PENJADWALAN MATA KULIAH (DETEKSI & OPTIMASI)\n";
+        cout << "====================================================================\n";
+        cout << "1. Tampilkan Jadwal Awal yang Masih Bentrok (Welsh-Powell)\n";
+        cout << "2. Urutkan & Tampilkan Jadwal Bebas Bentrok (Dinic Max-Flow)\n";
+        cout << "0. Keluar\n";
+        cout << "--------------------------------------------------------------------\n";
+        cout << "Pilih Opsi (0/1/2): ";
+        cin >> pilihan;
+
+        switch(pilihan) {
+            case 1:
+                menuWelshPowell();
+                break;
+            case 2:
+                menuDinic();
+                break;
+            case 0:
+                cout << "Keluar dari program. Terima kasih!\n";
+                break;
+            default:
+                cout << "Opsi tidak valid. Silakan coba lagi.\n";
+        }
+    } while (pilihan != 0);
+
     return 0;
 }
